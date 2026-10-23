@@ -108,6 +108,39 @@ fn save_dialog_preserves_flat_and_existing_layered_format_defaults() {
     }
 }
 
+/// Preferences › File Handling › Default Save Format is what Save As suggests for a document
+/// without a file of its own to keep; a flat format only for a plain raster, which it can hold.
+#[test]
+fn save_dialog_suggests_the_default_save_format() {
+    let ctx = egui::Context::default();
+    let suggestion = |path: Option<&str>, layered: bool, format: &str| {
+        let (mut app, open, written) = jpeg_app(path, layered);
+        app.run("prefs.set", json!({"path": "fileHandling.defaultSaveFormat", "value": format})).unwrap();
+        menus::invoke(&mut app, &ctx, "file.saveAs", json!({})).unwrap();
+        app.poll_file_dialog(&ctx, None);
+        let suggested = match open.borrow().as_slice() {
+            [(FileDialogRequest::Save { suggested }, _)] => suggested.clone(),
+            other => panic!("{format}: expected one save dialog, got {}", other.len()),
+        };
+        answer(&open, None);
+        app.poll_file_dialog(&ctx, None);
+        assert!(written.borrow().is_empty(), "cancelling writes nothing");
+        suggested
+    };
+    for (format, flat, layered) in [("psd", "psd", "psd"), ("pcraft", "pcraft", "pcraft"), ("tif", "tif", "tif"), ("png", "png", "psd"), ("jpg", "jpg", "psd")]
+    {
+        assert_eq!(suggestion(None, false, format), format!("My image.{flat}"), "{format}, flat");
+        assert_eq!(suggestion(None, true, format), format!("My image.{layered}"), "{format}, layered: a flat format would lose the layers");
+    }
+    // A file that can be saved back in its own format keeps it.
+    assert_eq!(suggestion(Some("/pics/My image.PSD"), true, "png"), "/pics/My image.PSD");
+    assert_eq!(suggestion(Some("/pics/My image.JPEG"), false, "pcraft"), "/pics/My image.JPEG");
+    // Only the listed formats are accepted.
+    let (mut app, _, _) = app();
+    assert!(app.run("prefs.set", json!({"path": "fileHandling.defaultSaveFormat", "value": "bmp"})).is_err());
+    assert_eq!(app.session.prefs().file_handling.default_save_format, photocraft_engine::prefs::SaveFormat::Psd);
+}
+
 #[test]
 fn transparent_png_keeps_its_format_until_its_lone_layer_becomes_smart() {
     let (mut app, open, written) = app();
