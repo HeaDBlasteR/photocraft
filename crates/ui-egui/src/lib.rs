@@ -447,6 +447,14 @@ pub(crate) fn plain_raster(doc: &Document) -> Option<&photocraft_doc::Layer> {
     }
 }
 
+/// Whether a flat file in format `ext` keeps the whole of `doc`: a [`plain_raster`] without
+/// alpha channels, which a format without transparency (JPEG) holds only as the Background,
+/// whose pixels are opaque.
+pub(crate) fn flat_keeps(doc: &Document, ext: &str) -> bool {
+    let Some(format) = photocraft_codecs::from_extension(ext) else { return false };
+    plain_raster(doc).is_some() && doc.channels.is_empty() && (format.caps().alpha || doc.background().is_some())
+}
+
 /// Encode a document: (file bytes, warnings about anything approximated or dropped).
 pub type ExportFn = Box<dyn Fn(&Document, &str, &ExportSettings) -> Result<(Vec<u8>, Vec<String>), String>>;
 pub type WriteFn = Box<dyn FnMut(&str, &[u8]) -> Result<(), String>>;
@@ -1722,9 +1730,10 @@ impl PhotocraftApp {
                 || (flat && photocraft_codecs::from_extension(&e).is_some_and(|f| f.caps().write))
         });
         // Anything else gets Preferences › File Handling › Default Save Format; a flat format
-        // only for a plain raster, which loses nothing to it.
+        // only when it keeps the whole document (no layers, alpha channels or, for JPEG,
+        // transparency to lose), since such a save isn't a copy and marks the document saved.
         let default_format = self.session.prefs().file_handling.default_save_format;
-        let default_ext = if default_format.is_flat() && !flat { "psd" } else { default_format.name() };
+        let default_ext = if default_format.is_flat() && !flat_keeps(&st.doc, default_format.name()) { "psd" } else { default_format.name() };
         let suggested = match &st.path {
             Some(p) if writable => p.clone(),
             p => {

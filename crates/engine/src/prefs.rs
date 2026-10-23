@@ -90,8 +90,9 @@ choice!(QuickExportFormat { Png = "png", Jpg = "jpg", Gif = "gif", Webp = "webp"
 choice!(
     /// The format Save As suggests for a document that has no file it can be saved back to (an
     /// untitled document, or one opened from a format that can't keep its layers). The names are
-    /// file extensions. A flat format (PNG, JPEG) is suggested only for a plain raster document;
-    /// a document with layers, masks or editable contents gets PSD instead, so they aren't lost.
+    /// file extensions. A flat format (PNG, JPEG) is suggested only when it keeps the whole
+    /// document; one with layers, masks, editable contents, alpha channels or (for JPEG)
+    /// transparency gets PSD instead, so they aren't lost.
     SaveFormat { Psd = "psd", Pcraft = "pcraft", Tif = "tif", Png = "png", Jpg = "jpg" } default Psd
 );
 

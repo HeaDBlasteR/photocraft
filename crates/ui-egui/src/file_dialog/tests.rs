@@ -109,12 +109,11 @@ fn save_dialog_preserves_flat_and_existing_layered_format_defaults() {
 }
 
 /// Preferences › File Handling › Default Save Format is what Save As suggests for a document
-/// without a file of its own to keep; a flat format only for a plain raster, which it can hold.
+/// without a file of its own to keep; a flat format only when it keeps the whole document.
 #[test]
 fn save_dialog_suggests_the_default_save_format() {
     let ctx = egui::Context::default();
-    let suggestion = |path: Option<&str>, layered: bool, format: &str| {
-        let (mut app, open, written) = jpeg_app(path, layered);
+    let suggest = |(mut app, open, written): (PhotocraftApp, Open, Rc<RefCell<Vec<String>>>), format: &str| {
         app.run("prefs.set", json!({"path": "fileHandling.defaultSaveFormat", "value": format})).unwrap();
         menus::invoke(&mut app, &ctx, "file.saveAs", json!({})).unwrap();
         app.poll_file_dialog(&ctx, None);
@@ -127,6 +126,7 @@ fn save_dialog_suggests_the_default_save_format() {
         assert!(written.borrow().is_empty(), "cancelling writes nothing");
         suggested
     };
+    let suggestion = |path: Option<&str>, layered: bool, format: &str| suggest(jpeg_app(path, layered), format);
     for (format, flat, layered) in [("psd", "psd", "psd"), ("pcraft", "pcraft", "pcraft"), ("tif", "tif", "tif"), ("png", "png", "psd"), ("jpg", "jpg", "psd")]
     {
         assert_eq!(suggestion(None, false, format), format!("My image.{flat}"), "{format}, flat");
@@ -135,6 +135,22 @@ fn save_dialog_suggests_the_default_save_format() {
     // A file that can be saved back in its own format keeps it.
     assert_eq!(suggestion(Some("/pics/My image.PSD"), true, "png"), "/pics/My image.PSD");
     assert_eq!(suggestion(Some("/pics/My image.JPEG"), false, "pcraft"), "/pics/My image.JPEG");
+    // A flat format that would drop something isn't suggested: JPEG can't store transparency,
+    // and neither PNG nor JPEG an alpha channel.
+    let transparent = || {
+        let (mut app, open, written) = app();
+        std::sync::Arc::make_mut(&mut app.session.active_mut().unwrap().doc).layers[0].surface_mut().unwrap().write_pixel(0, 0, &[1.0, 0.0, 0.0, 0.0]);
+        let bytes = photocraft_io::export(&app.session.active().unwrap().doc, "transparent.PNG", &Default::default()).unwrap().bytes;
+        app.session.add_document(photocraft_io::import("transparent.PNG", &bytes).unwrap().document, None);
+        (app, open, written)
+    };
+    assert_eq!(suggest(transparent(), "png"), "transparent.png");
+    assert_eq!(suggest(transparent(), "jpg"), "transparent.psd");
+    for format in ["png", "jpg"] {
+        let (mut app, open, written) = jpeg_app(None, false);
+        app.run("channel.new", json!({"name": "Alpha", "fill": "black"})).unwrap();
+        assert_eq!(suggest((app, open, written), format), "My image.psd", "{format} with an alpha channel");
+    }
     // Only the listed formats are accepted.
     let (mut app, _, _) = app();
     assert!(app.run("prefs.set", json!({"path": "fileHandling.defaultSaveFormat", "value": "bmp"})).is_err());
