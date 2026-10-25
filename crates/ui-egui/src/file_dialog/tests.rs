@@ -151,6 +151,14 @@ fn save_dialog_suggests_the_default_save_format() {
         app.run("channel.new", json!({"name": "Alpha", "fill": "black"})).unwrap();
         assert_eq!(suggest((app, open, written), format), "My image.psd", "{format} with an alpha channel");
     }
+    // Nor one that would drop what only a PSD keeps: a Quick Mask, a guide.
+    for (command, params) in [("select.editInQuickMaskMode", json!({"on": true})), ("view.newGuide", json!({"orientation": "vertical", "position": 2}))] {
+        for format in ["png", "jpg"] {
+            let (mut app, open, written) = jpeg_app(None, false);
+            app.run(command, params.clone()).unwrap();
+            assert_eq!(suggest((app, open, written), format), "My image.psd", "{format} after {command}");
+        }
+    }
     // Only the listed formats are accepted.
     let (mut app, _, _) = app();
     assert!(app.run("prefs.set", json!({"path": "fileHandling.defaultSaveFormat", "value": "bmp"})).is_err());

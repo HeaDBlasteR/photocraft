@@ -613,9 +613,9 @@ fn composite_share(format: Format) -> f32 {
 
 /// Whether a flat file in `format` keeps the whole of `doc`, assuming its layers already fit
 /// (one plain raster layer, the caller's question): its colour model and bit depth stored as they
-/// are, its profile, EXIF, XMP and text metadata kept, no alpha channels or PSD-only data, and
-/// transparency only where the format has an alpha (else the document must be the opaque
-/// Background). Anything else [`export_flat`] would convert or drop.
+/// are, its profile, EXIF, XMP and text metadata kept, no alpha channels or PSD-only data
+/// ([`only_pixels`]), and transparency only where the format has an alpha (else the document must
+/// be the opaque Background). Anything else [`export_flat`] would convert or drop.
 pub fn flat_holds(doc: &Document, format: Format) -> bool {
     let caps = format.caps();
     let meta = &doc.metadata;
@@ -633,7 +633,28 @@ pub fn flat_holds(doc: &Document, format: Format) -> bool {
         && meta.psd_resources.is_empty()
         && meta.psd_global_blocks.is_empty()
         && doc.channels.is_empty()
+        && only_pixels(doc)
         && (caps.alpha || doc.background().is_some())
+}
+
+/// Whether `doc` holds nothing a flat file has no place for: no Quick Mask, paths, guides,
+/// patterns, layer comps, measurements, notes, type styles, slices, variables or timeline, each
+/// as a new document has it. A PSD keeps them all.
+fn only_pixels(doc: &Document) -> bool {
+    doc.quick_mask.is_none()
+        && doc.paths.is_empty()
+        && doc.work_path.is_none()
+        && doc.clipping_path.is_none()
+        && doc.guides == Default::default()
+        && doc.patterns.is_empty()
+        && doc.layer_comps.is_empty()
+        && doc.last_document_state.is_none()
+        && doc.measurement == Default::default()
+        && doc.notes.is_empty()
+        && doc.text_styles == Default::default()
+        && doc.slices == Default::default()
+        && doc.variables == Default::default()
+        && doc.timeline.is_none()
 }
 
 /// Flattens and encodes as `format`.
